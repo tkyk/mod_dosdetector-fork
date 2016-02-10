@@ -292,10 +292,10 @@ static int dosdetector_handler(request_rec *r)
     }
 
     const char *address;
-    address = r->connection->remote_ip;
+    address = r->useragent_ip;
 
     struct in_addr addr;
-    addr = r->connection->remote_addr->sa.sin.sin_addr;
+    addr = r->useragent_addr->sa.sin.sin_addr;
     if(addr.s_addr == 0){
         inet_aton(address, &addr);
     }
