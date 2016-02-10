@@ -233,7 +233,6 @@ static int is_contenttype_ignored(dosdetector_dir_config *cfg, request_rec *r)
 {
     const char *content_type;
     content_type = ap_sub_req_lookup_uri(r->uri, r, NULL)->content_type;
-    if (!content_type) content_type = ap_default_type(r);
     
     ap_regmatch_t regmatch[AP_MAX_REG_MATCH];
     ap_regex_t **contenttype_regexp = (ap_regex_t **) cfg->contenttype_regexp->elts;
