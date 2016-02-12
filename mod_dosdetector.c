@@ -98,11 +98,10 @@ typedef enum {
 } client_status_e;
 
 static long table_size  = DEFAULT_TABLE_SIZE;
-const char *shmname;
+const char *shmname = NULL;
 
 static client_list_t *client_list;
 static char lock_name[L_tmpnam];
-static char shm_name[L_tmpnam];
 static apr_global_mutex_t *lock = NULL;
 static apr_shm_t *shm = NULL;
 
@@ -134,27 +133,33 @@ static void log_and_cleanup(char *msg, apr_status_t status, server_rec *s)
 static apr_status_t create_shm(server_rec *s,apr_pool_t *p)
 {    
     size_t size;
+    apr_status_t rc;
+
     size =  sizeof(client_list_t) + table_size * sizeof(client_t);
 
-    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, 
-                 "Creating shmem. name: %s, size: %zu", shmname, size);
-
-    apr_status_t rc = apr_shm_remove(shmname, p);
-    if (APR_SUCCESS == rc) {
-        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                     "removed the existing shared memory segment named '%s'", shmname);
+    if(shmname != NULL) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s, "creating named shared memory '%s'", shmname);
+        rc = apr_shm_remove(shmname, p);
+        if (APR_SUCCESS == rc) {
+            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                    "removed the existing shared memory segment named '%s'", shmname);
+        }
+    } else {
+	    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s, "creating anonymous shared memory");
     }
     
     rc = apr_shm_create(&shm, size, shmname, p);
     if (APR_SUCCESS != rc) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, rc, s, "failed to create shared memory %s", shmname);
+        ap_log_error(APLOG_MARK, APLOG_ERR, rc, s, "failed to create shared memory");
         return rc;
     }
     client_list = apr_shm_baseaddr_get(shm);
     memset(client_list, 0, size);
 
-    /* prevent other processes from accessing the segment */
-    apr_shm_remove(shmname, p);
+    if(shmname != NULL) {
+        /* prevent other processes from accessing the segment */
+        apr_shm_remove(shmname, p);
+    }
 
     client_list->head = client_list->base;
     client_t *c = client_list->base;
@@ -487,9 +492,6 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
 
 static void register_hooks(apr_pool_t *p)
 {
-    tmpnam(shm_name);
-    shmname    = shm_name;
-
     ap_hook_post_read_request(dosdetector_handler,NULL,NULL,APR_HOOK_MIDDLE);
     ap_hook_post_config(initialize_module, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(initialize_child, NULL, NULL, APR_HOOK_MIDDLE);
