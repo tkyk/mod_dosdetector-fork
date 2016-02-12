@@ -40,7 +40,7 @@
 #include "apr_thread_mutex.h"
 
 #define MODULE_NAME "mod_dosdetector"
-#define MODULE_VERSION "1.0.0"
+#define MODULE_VERSION "1.1.0"
 
 #ifdef APLOG_USE_MODULE
 APLOG_USE_MODULE(dosdetector);
