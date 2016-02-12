@@ -1,10 +1,10 @@
 %define name	%{mod_name}-fork
 %define version %{mod_version}
-%define release 1
+%define release 0.1.b1
 %define github_user tkyk
 
 # Module-Specific definitions
-%define mod_version	1.0.0
+%define mod_version	1.1.0
 %define mod_basename	dosdetector
 %define mod_name	mod_%{mod_basename}
 %define mod_conf	%{mod_basename}.conf
@@ -22,10 +22,9 @@ URL:		http://github.com/%{github_user}/mod_dosdetector-fork/tree/master
 Source0:	http://cloud.github.com/downloads/%{github_user}/mod_dosdetector-fork/%{sourcename}.tar.gz
 
 BuildRoot:	%{_tmppath}/%{name}-buildroot
-BuildRequires:	sed
-BuildPrereq:	httpd-devel >= 2.2, apr-devel
+BuildRequires:	sed, httpd-devel >= 2.4, apr-devel
 Provides:	mod_dosdetector
-Requires:	httpd >= 2.2
+Requires:	httpd >= 2.4
 
 %description
 mod_dosdetector is a DoS detector module for Apache HTTP Server.
