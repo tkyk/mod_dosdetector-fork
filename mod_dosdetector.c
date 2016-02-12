@@ -133,7 +133,7 @@ static apr_status_t create_shm(server_rec *s,apr_pool_t *p)
     size =  sizeof(client_list_t) + table_size * sizeof(client_t);
 
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, 
-                 "Creating shmem. name: %s, size: %d", shmname, size);
+                 "Creating shmem. name: %s, size: %zu", shmname, size);
 
     apr_status_t rc = apr_shm_remove(shmname, p);
     if (APR_SUCCESS == rc) {
