@@ -42,6 +42,10 @@
 #define MODULE_NAME "mod_dosdetector"
 #define MODULE_VERSION "1.0.0"
 
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(dosdetector);
+#endif
+
 #ifdef _DEBUG
 #define DEBUGLOG(...) ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, NULL, MODULE_NAME ": " __VA_ARGS__)
 #else
