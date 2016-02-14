@@ -284,7 +284,7 @@ static client_status_e update_client_status(client_t *client, dosdetector_dir_co
     return status;
 }
 
-static int dosdetector_handler(request_rec *r)
+static int dosdetector_read_request(request_rec *r)
 {
     dosdetector_dir_config *cfg = (dosdetector_dir_config *) ap_get_module_config(r->per_dir_config, &dosdetector_module);
     
@@ -447,9 +447,9 @@ static command_rec dosdetector_cmds[] = {
     {NULL},
 };
 
-static int initialize_module(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
+static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
-    //DEBUGLOG("initialize_module is called");
+    //DEBUGLOG("dosdetector_post_config is called");
     ap_log_error(APLOG_MARK, APLOG_INFO, 0, s,
                  MODULE_NAME " " MODULE_VERSION " started.");
 
@@ -492,8 +492,8 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
 
 static void register_hooks(apr_pool_t *p)
 {
-    ap_hook_post_read_request(dosdetector_handler,NULL,NULL,APR_HOOK_MIDDLE);
-    ap_hook_post_config(initialize_module, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_post_read_request(dosdetector_read_request,NULL,NULL,APR_HOOK_MIDDLE);
+    ap_hook_post_config(dosdetector_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(initialize_child, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
