@@ -106,7 +106,7 @@ static apr_shm_t *shm = NULL;
 
 static apr_status_t cleanup_shm(void *not_used)
 {
-    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, "Notice: cleaning up shared memory");
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf, "Notice: cleaning up shared memory");
     fflush(stderr);
 
     if (shm) {
