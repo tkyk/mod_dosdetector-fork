@@ -47,12 +47,12 @@ APLOG_USE_MODULE(dosdetector);
 #endif
 
 #ifdef _DEBUG
-#define DEBUGLOG(...) ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, NULL, __VA_ARGS__)
+#define DEBUGLOG(...) ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, __VA_ARGS__)
 #else
 #define DEBUGLOG(...) //
 #endif
 
-#define TRACELOG(...) ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, NULL, __VA_ARGS__)
+#define TRACELOG(...) ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, __VA_ARGS__)
 
 #define USER_DATA_KEY "DoSDetecterUserDataKey"
 
