@@ -52,8 +52,6 @@ APLOG_USE_MODULE(dosdetector);
 #define DEBUGLOG(...) //
 #endif
 
-#define TRACELOG(...) ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, __VA_ARGS__)
-
 #define USER_DATA_KEY "DoSDetecterUserDataKey"
 
 #define DEFAULT_THRESHOLD 10000
@@ -329,12 +327,14 @@ static int dosdetector_read_request(request_rec *r)
     switch(status)
     {
     case SUSPECTED_FIRST:
-        TRACELOG("'%s' is suspected as DoS attack! (counter: %d)", address, client->count);
+        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                "'%s' is suspected as DoS attack! (counter: %d)", address, client->count);
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
         break;
 
     case SUSPECTED_HARD_FIRST:
-        TRACELOG("'%s' is suspected as Hard DoS attack! (counter: %d)", address, client->count);
+        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                "'%s' is suspected as Hard DoS attack! (counter: %d)", address, client->count);
         apr_table_setn(r->subprocess_env, "SuspectHardDoS", "1");
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
         break;
