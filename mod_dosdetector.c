@@ -39,9 +39,6 @@
 #include "apr_shm.h"
 #include "util_mutex.h"
 
-#define MODULE_NAME "mod_dosdetector"
-#define MODULE_VERSION "1.1.0"
-
 #ifdef APLOG_USE_MODULE
 APLOG_USE_MODULE(dosdetector);
 #endif
@@ -464,10 +461,6 @@ static int dosdetector_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *p
 
 static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
-    //DEBUGLOG("dosdetector_post_config is called");
-    ap_log_error(APLOG_MARK, APLOG_INFO, 0, s,
-                 MODULE_NAME " " MODULE_VERSION " started.");
-
     void *user_data;
     apr_pool_userdata_get(&user_data, USER_DATA_KEY, s->process->pool);
     if (user_data == NULL) {
