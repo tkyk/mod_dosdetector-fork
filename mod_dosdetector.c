@@ -136,14 +136,14 @@ static apr_status_t create_shm(server_rec *s,apr_pool_t *p)
     size =  sizeof(client_list_t) + table_size * sizeof(client_t);
 
     if(shmname != NULL) {
-        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s, "creating named shared memory '%s'", shmname);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "creating named shared memory '%s'", shmname);
         rc = apr_shm_remove(shmname, p);
         if (APR_SUCCESS == rc) {
             ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
                     "removed the existing shared memory segment named '%s'", shmname);
         }
     } else {
-	    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s, "creating anonymous shared memory");
+	    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "creating anonymous shared memory");
     }
     
     rc = apr_shm_create(&shm, size, shmname, p);
