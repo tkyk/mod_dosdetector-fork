@@ -37,7 +37,7 @@
 #include "ap_config.h"
 #include "apr_strings.h"
 #include "apr_shm.h"
-#include "apr_thread_mutex.h"
+#include "util_mutex.h"
 
 #define MODULE_NAME "mod_dosdetector"
 #define MODULE_VERSION "1.1.0"
@@ -101,7 +101,7 @@ static long table_size  = DEFAULT_TABLE_SIZE;
 const char *shmname = NULL;
 
 static client_list_t *client_list;
-static char lock_name[L_tmpnam];
+static const char *mutex_id = "dosdetector-shm";
 static apr_global_mutex_t *lock = NULL;
 static apr_shm_t *shm = NULL;
 
@@ -447,6 +447,21 @@ static command_rec dosdetector_cmds[] = {
     {NULL},
 };
 
+static int dosdetector_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptmp)
+{
+    apr_status_t rv = ap_mutex_register(p, mutex_id, NULL, APR_LOCK_DEFAULT, 0);
+
+    DEBUGLOG("Register global mutex %s", mutex_id);
+    if (rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf,
+                "failed to register %s mutex", mutex_id);
+        return 500;
+    }
+
+    return OK;
+}
+
+
 static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
     //DEBUGLOG("dosdetector_post_config is called");
@@ -465,8 +480,7 @@ static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    tmpnam(lock_name);
-    apr_global_mutex_create(&lock, lock_name, APR_THREAD_MUTEX_DEFAULT, p);
+    rv = ap_global_mutex_create(&lock, NULL, mutex_id, NULL, s, p, 0);
 
     apr_pool_cleanup_register(p, NULL, cleanup_shm, apr_pool_cleanup_null);
 
@@ -483,7 +497,8 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
         return;
     }
 
-    status = apr_global_mutex_child_init(&lock, lock_name, p);
+    const char *lock_filename = apr_global_mutex_lockfile(lock);
+    status = apr_global_mutex_child_init(&lock, lock_filename, p);
     if (status != APR_SUCCESS) {
         log_and_cleanup("failed to create lock (lock)", status, s);
         return;
@@ -493,6 +508,7 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
 static void register_hooks(apr_pool_t *p)
 {
     ap_hook_post_read_request(dosdetector_read_request,NULL,NULL,APR_HOOK_MIDDLE);
+    ap_hook_pre_config(dosdetector_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_post_config(dosdetector_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(initialize_child, NULL, NULL, APR_HOOK_MIDDLE);
 }
