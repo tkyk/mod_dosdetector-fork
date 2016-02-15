@@ -45,8 +45,10 @@ APLOG_USE_MODULE(dosdetector);
 
 #ifdef _DEBUG
 #define DEBUGLOG(...) ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, __VA_ARGS__)
+#define DEBUGLOG_R(...) ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, __VA_ARGS__)
 #else
-#define DEBUGLOG(...) //
+#define DEBUGLOG(...)   //
+#define DEBUGLOG_R(...) //
 #endif
 
 #define USER_DATA_KEY "DoSDetecterUserDataKey"
@@ -315,7 +317,7 @@ static int dosdetector_read_request(request_rec *r)
     #endif
 
     client_status_e status = update_client_status(client, cfg, now);
-    DEBUGLOG("%s, count: %d -> %d, interval: %d",
+    DEBUGLOG_R("%s, count: %d -> %d, interval: %d",
              address, last_count, client->count, (int)client->interval);
 
     if (lock) apr_global_mutex_unlock(lock);
@@ -340,7 +342,7 @@ static int dosdetector_read_request(request_rec *r)
         apr_table_setn(r->subprocess_env, "SuspectHardDoS", "1");
     case SUSPECTED:
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
-        DEBUGLOG("'%s' has been still suspected as DoS attack! (suspected %d sec ago)", address, (int)(now - client->suspected));
+        DEBUGLOG_R("'%s' has been still suspected as DoS attack! (suspected %d sec ago)", address, (int)(now - client->suspected));
         break;
 
     case NORMAL:
