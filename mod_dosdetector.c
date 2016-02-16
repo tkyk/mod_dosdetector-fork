@@ -502,7 +502,9 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
 
 static void register_hooks(apr_pool_t *p)
 {
-    ap_hook_post_read_request(dosdetector_read_request,NULL,NULL,APR_HOOK_MIDDLE);
+    // read_request should be called after mod_setenvif's one
+    ap_hook_post_read_request(dosdetector_read_request,NULL,NULL,APR_HOOK_LAST);
+
     ap_hook_pre_config(dosdetector_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_post_config(dosdetector_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(initialize_child, NULL, NULL, APR_HOOK_MIDDLE);
