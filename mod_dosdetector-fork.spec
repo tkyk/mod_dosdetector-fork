@@ -1,6 +1,6 @@
 %define name	%{mod_name}-fork
 %define version %{mod_version}
-%define release 0.1.b1
+%define release 0.1.b2
 %define github_user tkyk
 
 # Module-Specific definitions
