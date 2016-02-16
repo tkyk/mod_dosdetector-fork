@@ -105,26 +105,22 @@ static apr_shm_t *shm = NULL;
 
 static apr_status_t cleanup_shm(void *not_used)
 {
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf, "Notice: cleaning up shared memory");
-    fflush(stderr);
-
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf, "cleaning up shared memory");
     if (shm) {
         apr_shm_destroy(shm);
         shm = NULL;
     }
+    return APR_SUCCESS;
+}
 
+static apr_status_t cleanup_mutex(void *not_used)
+{
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf, "cleaning up global mutex");
     if (lock) {
         apr_global_mutex_destroy(lock);
         lock = NULL;
     }
-
     return APR_SUCCESS;
-}
-
-static void log_and_cleanup(char *msg, apr_status_t status, server_rec *s)
-{
-    ap_log_error(APLOG_MARK, APLOG_ERR, status, s, "Error: %s", msg);
-    cleanup_shm(NULL);
 }
 
 static apr_status_t create_shm(server_rec *s,apr_pool_t *p)
@@ -147,7 +143,6 @@ static apr_status_t create_shm(server_rec *s,apr_pool_t *p)
     
     rc = apr_shm_create(&shm, size, shmname, p);
     if (APR_SUCCESS != rc) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, rc, s, "failed to create shared memory");
         return rc;
     }
     client_list = apr_shm_baseaddr_get(shm);
@@ -477,19 +472,23 @@ static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *
 
     apr_status_t rv = create_shm(s, p);
     if(rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, rv, s, "failed to create shared memory");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
+    apr_pool_cleanup_register(p, NULL, cleanup_shm, apr_pool_cleanup_null);
 
     rv = ap_global_mutex_create(&lock, NULL, mutex_id, NULL, s, p, 0);
-
+    if(rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, rv, s, "failed to create global mutex");
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
 #ifdef _DEBUG
     const char *mutex_name = apr_global_mutex_name(lock);
     DEBUGLOG("mutex name is %s", mutex_name);
     const char *mutex_filename = apr_global_mutex_lockfile(lock);
     DEBUGLOG("mutex filename is %s", mutex_filename);
 #endif
-
-    apr_pool_cleanup_register(p, NULL, cleanup_shm, apr_pool_cleanup_null);
+    apr_pool_cleanup_register(p, NULL, cleanup_mutex, apr_pool_cleanup_null);
 
     return OK;
 }
@@ -504,10 +503,15 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
         return;
     }
 
+    if(!lock) {
+        DEBUGLOG("global mutex is null in initialize_child");
+        return;
+    }
+
     const char *lock_filename = apr_global_mutex_lockfile(lock);
     status = apr_global_mutex_child_init(&lock, lock_filename, p);
     if (status != APR_SUCCESS) {
-        log_and_cleanup("failed to create lock (lock)", status, s);
+        ap_log_error(APLOG_MARK, APLOG_ERR, status, s, "apr_global_mutex_child_init failed");
         return;
     }
 }
