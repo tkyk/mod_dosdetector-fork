@@ -250,7 +250,7 @@ static int is_contenttype_ignored(dosdetector_dir_config *cfg, request_rec *r)
             break;
         }
     }
-    DEBUGLOG("content-type=%s, result=%s", content_type, (ignore ? "ignored":"processed"));
+    DEBUGLOG_R("content-type=%s, result=%s", content_type, (ignore ? "ignored":"processed"));
     return ignore;
 }
 
@@ -289,7 +289,7 @@ static int dosdetector_read_request(request_rec *r)
     if(!ap_is_initial_req(r)) return DECLINED;
 
     if(apr_table_get(r->subprocess_env, "NoCheckDoS")) {
-        DEBUGLOG("'NoCheckDoS' is set, skipping DoS check for %s", r->uri);
+        DEBUGLOG_R("'NoCheckDoS' is set, skipping DoS check for %s", r->uri);
         return OK;
     }
 
