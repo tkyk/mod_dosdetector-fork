@@ -283,6 +283,11 @@ static client_status_e update_client_status(client_t *client, dosdetector_dir_co
 
 static int dosdetector_read_request(request_rec *r)
 {
+    if(!shm || !lock) {
+        DEBUGLOG_R("shared memory or global mutex is null; skip DoS check");
+        return OK;
+    }
+
     dosdetector_dir_config *cfg = (dosdetector_dir_config *) ap_get_module_config(r->per_dir_config, &dosdetector_module);
     
     if(cfg->detection) return DECLINED;
