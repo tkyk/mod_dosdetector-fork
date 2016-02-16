@@ -477,6 +477,13 @@ static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *
 
     rv = ap_global_mutex_create(&lock, NULL, mutex_id, NULL, s, p, 0);
 
+#ifdef _DEBUG
+    const char *mutex_name = apr_global_mutex_name(lock);
+    DEBUGLOG("mutex name is %s", mutex_name);
+    const char *mutex_filename = apr_global_mutex_lockfile(lock);
+    DEBUGLOG("mutex filename is %s", mutex_filename);
+#endif
+
     apr_pool_cleanup_register(p, NULL, cleanup_shm, apr_pool_cleanup_null);
 
     return OK;
