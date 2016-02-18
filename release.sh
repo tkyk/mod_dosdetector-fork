@@ -5,8 +5,8 @@
 if [ $# -gt 0 ]; then
     VERSION=$1
 else
-    echo "$0 VERSION"
-    exit 1
+    VERSION=$(awk '/^%define mod_version/ { print $3 }' mod_dosdetector-fork.spec)
+    echo "Version defined in the spec file: $VERSION"
 fi
 
 BASENAME=mod_dosdetector-fork-$VERSION
