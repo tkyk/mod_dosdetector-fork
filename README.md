@@ -50,7 +50,6 @@ sudo make install
 ### RPMの作成方法
 
 ```bash
-./release.sh
 cp mod_dosdetector-fork-x.y.z.tar.gz SOURCES/
 cp mod_dosdetector-fork.spec SPECS/
 rpmbuild -bb SPECS/mod_dosdetector-fork.spec
@@ -90,9 +89,9 @@ DoS攻撃の疑いありと見なすアクセス数の閾値。
 （例:100）
 
 ### DoSShmemName
-**使用は推奨されません**
 共有メモリの名前。
 省略した場合は匿名の共有メモリが使用される。
+匿名の共有メモリをサポートしていないプラットフォームでのみ、設定してください。
 
 
 ## 変更履歴
