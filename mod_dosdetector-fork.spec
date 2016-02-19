@@ -1,6 +1,6 @@
 %define name	%{mod_name}-fork
 %define version %{mod_version}
-%define release 0.1.b2
+%define release 1
 %define github_user tkyk
 
 # Module-Specific definitions
@@ -56,6 +56,8 @@ mod_dosdetector is a DoS detector module for Apache HTTP Server.
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/%{mod_conf}
 
 %changelog
-* Mon Aug 17 2009 Takayuki Miwa <i@tkyk.name> - 1.0.0-1
+* Thu Feb 18 2016 Takayuki Miwa <takayuki.3w@gmail.com> - 1.1.0-1
+- Release 1.1.0 for Apache 2.4.
+* Mon Aug 17 2009 Takayuki Miwa <takayuki.3w@gmail.com> - 1.0.0-1
 - Initial package.
 
