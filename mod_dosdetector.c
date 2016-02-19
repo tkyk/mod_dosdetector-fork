@@ -37,18 +37,19 @@
 #include "ap_config.h"
 #include "apr_strings.h"
 #include "apr_shm.h"
-#include "apr_thread_mutex.h"
+#include "util_mutex.h"
 
-#define MODULE_NAME "mod_dosdetector"
-#define MODULE_VERSION "1.0.0"
-
-#ifdef _DEBUG
-#define DEBUGLOG(...) ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, NULL, MODULE_NAME ": " __VA_ARGS__)
-#else
-#define DEBUGLOG(...) //
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(dosdetector);
 #endif
 
-#define TRACELOG(...) ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, NULL, MODULE_NAME ": " __VA_ARGS__)
+#ifdef _DEBUG
+#define DEBUGLOG(...) ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, __VA_ARGS__)
+#define DEBUGLOG_R(...) ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, __VA_ARGS__)
+#else
+#define DEBUGLOG(...)   //
+#define DEBUGLOG_R(...) //
+#endif
 
 #define USER_DATA_KEY "DoSDetecterUserDataKey"
 
@@ -94,63 +95,63 @@ typedef enum {
 } client_status_e;
 
 static long table_size  = DEFAULT_TABLE_SIZE;
-const char *shmname;
+const char *shmname = NULL;
 
 static client_list_t *client_list;
-static char lock_name[L_tmpnam];
-static char shm_name[L_tmpnam];
+static const char *mutex_id = "dosdetector-shm";
 static apr_global_mutex_t *lock = NULL;
 static apr_shm_t *shm = NULL;
 
 
 static apr_status_t cleanup_shm(void *not_used)
 {
-    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, "Notice: cleaning up shared memory");
-    fflush(stderr);
-
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf, "cleaning up shared memory");
     if (shm) {
         apr_shm_destroy(shm);
         shm = NULL;
     }
+    return APR_SUCCESS;
+}
 
+static apr_status_t cleanup_mutex(void *not_used)
+{
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf, "cleaning up global mutex");
     if (lock) {
         apr_global_mutex_destroy(lock);
         lock = NULL;
     }
-
     return APR_SUCCESS;
-}
-
-static void log_and_cleanup(char *msg, apr_status_t status, server_rec *s)
-{
-    ap_log_error(APLOG_MARK, APLOG_ERR, status, s, "Error: %s", msg);
-    cleanup_shm(NULL);
 }
 
 static apr_status_t create_shm(server_rec *s,apr_pool_t *p)
 {    
     size_t size;
+    apr_status_t rc;
+
     size =  sizeof(client_list_t) + table_size * sizeof(client_t);
 
-    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, 
-                 "Creating shmem. name: %s, size: %d", shmname, size);
-
-    apr_status_t rc = apr_shm_remove(shmname, p);
-    if (APR_SUCCESS == rc) {
-        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                     "removed the existing shared memory segment named '%s'", shmname);
+    if(shmname != NULL) {
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "creating named shared memory '%s'", shmname);
+        rc = apr_shm_remove(shmname, p);
+        if (APR_SUCCESS == rc) {
+            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                    "removed the existing shared memory segment named '%s'", shmname);
+        }
+    } else {
+	    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "creating anonymous shared memory");
     }
     
     rc = apr_shm_create(&shm, size, shmname, p);
     if (APR_SUCCESS != rc) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, rc, s, "failed to create shared memory %s", shmname);
         return rc;
     }
     client_list = apr_shm_baseaddr_get(shm);
     memset(client_list, 0, size);
 
-    /* prevent other processes from accessing the segment */
-    apr_shm_remove(shmname, p);
+    if(shmname != NULL) {
+        /* prevent other processes from accessing the segment */
+        apr_shm_remove(shmname, p);
+    }
 
     client_list->head = client_list->base;
     client_t *c = client_list->base;
@@ -233,7 +234,6 @@ static int is_contenttype_ignored(dosdetector_dir_config *cfg, request_rec *r)
 {
     const char *content_type;
     content_type = ap_sub_req_lookup_uri(r->uri, r, NULL)->content_type;
-    if (!content_type) content_type = ap_default_type(r);
     
     ap_regmatch_t regmatch[AP_MAX_REG_MATCH];
     ap_regex_t **contenttype_regexp = (ap_regex_t **) cfg->contenttype_regexp->elts;
@@ -245,7 +245,7 @@ static int is_contenttype_ignored(dosdetector_dir_config *cfg, request_rec *r)
             break;
         }
     }
-    DEBUGLOG("content-type=%s, result=%s", content_type, (ignore ? "ignored":"processed"));
+    DEBUGLOG_R("content-type=%s, result=%s", content_type, (ignore ? "ignored":"processed"));
     return ignore;
 }
 
@@ -276,15 +276,20 @@ static client_status_e update_client_status(client_t *client, dosdetector_dir_co
     return status;
 }
 
-static int dosdetector_handler(request_rec *r)
+static int dosdetector_read_request(request_rec *r)
 {
+    if(!shm || !lock) {
+        DEBUGLOG_R("shared memory or global mutex is null; skip DoS check");
+        return OK;
+    }
+
     dosdetector_dir_config *cfg = (dosdetector_dir_config *) ap_get_module_config(r->per_dir_config, &dosdetector_module);
     
     if(cfg->detection) return DECLINED;
     if(!ap_is_initial_req(r)) return DECLINED;
 
     if(apr_table_get(r->subprocess_env, "NoCheckDoS")) {
-        DEBUGLOG("'NoCheckDoS' is set, skipping DoS check for %s", r->uri);
+        DEBUGLOG_R("'NoCheckDoS' is set, skipping DoS check for %s", r->uri);
         return OK;
     }
 
@@ -293,10 +298,10 @@ static int dosdetector_handler(request_rec *r)
     }
 
     const char *address;
-    address = r->connection->remote_ip;
+    address = r->useragent_ip;
 
     struct in_addr addr;
-    addr = r->connection->remote_addr->sa.sin.sin_addr;
+    addr = r->useragent_addr->sa.sin.sin_addr;
     if(addr.s_addr == 0){
         inet_aton(address, &addr);
     }
@@ -312,7 +317,7 @@ static int dosdetector_handler(request_rec *r)
     #endif
 
     client_status_e status = update_client_status(client, cfg, now);
-    DEBUGLOG("%s, count: %d -> %d, interval: %d",
+    DEBUGLOG_R("%s, count: %d -> %d, interval: %d",
              address, last_count, client->count, (int)client->interval);
 
     if (lock) apr_global_mutex_unlock(lock);
@@ -321,12 +326,14 @@ static int dosdetector_handler(request_rec *r)
     switch(status)
     {
     case SUSPECTED_FIRST:
-        TRACELOG("'%s' is suspected as DoS attack! (counter: %d)", address, client->count);
+        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                "'%s' is suspected as DoS attack! (counter: %d)", address, client->count);
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
         break;
 
     case SUSPECTED_HARD_FIRST:
-        TRACELOG("'%s' is suspected as Hard DoS attack! (counter: %d)", address, client->count);
+        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                "'%s' is suspected as Hard DoS attack! (counter: %d)", address, client->count);
         apr_table_setn(r->subprocess_env, "SuspectHardDoS", "1");
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
         break;
@@ -335,7 +342,7 @@ static int dosdetector_handler(request_rec *r)
         apr_table_setn(r->subprocess_env, "SuspectHardDoS", "1");
     case SUSPECTED:
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
-        DEBUGLOG("'%s' has been still suspected as DoS attack! (suspected %d sec ago)", address, (int)(now - client->suspected));
+        DEBUGLOG_R("'%s' has been still suspected as DoS attack! (suspected %d sec ago)", address, (int)(now - client->suspected));
         break;
 
     case NORMAL:
@@ -439,12 +446,23 @@ static command_rec dosdetector_cmds[] = {
     {NULL},
 };
 
-static int initialize_module(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
+static int dosdetector_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptmp)
 {
-    //DEBUGLOG("initialize_module is called");
-    ap_log_error(APLOG_MARK, APLOG_INFO, 0, s,
-                 MODULE_NAME " " MODULE_VERSION " started.");
+    apr_status_t rv = ap_mutex_register(p, mutex_id, NULL, APR_LOCK_DEFAULT, 0);
 
+    DEBUGLOG("Register global mutex %s", mutex_id);
+    if (rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf,
+                "failed to register %s mutex", mutex_id);
+        return 500;
+    }
+
+    return OK;
+}
+
+
+static int dosdetector_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
+{
     void *user_data;
     apr_pool_userdata_get(&user_data, USER_DATA_KEY, s->process->pool);
     if (user_data == NULL) {
@@ -454,13 +472,23 @@ static int initialize_module(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp,
 
     apr_status_t rv = create_shm(s, p);
     if(rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, rv, s, "failed to create shared memory");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
-
-    tmpnam(lock_name);
-    apr_global_mutex_create(&lock, lock_name, APR_THREAD_MUTEX_DEFAULT, p);
-
     apr_pool_cleanup_register(p, NULL, cleanup_shm, apr_pool_cleanup_null);
+
+    rv = ap_global_mutex_create(&lock, NULL, mutex_id, NULL, s, p, 0);
+    if(rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, rv, s, "failed to create global mutex");
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+#ifdef _DEBUG
+    const char *mutex_name = apr_global_mutex_name(lock);
+    DEBUGLOG("mutex name is %s", mutex_name);
+    const char *mutex_filename = apr_global_mutex_lockfile(lock);
+    DEBUGLOG("mutex filename is %s", mutex_filename);
+#endif
+    apr_pool_cleanup_register(p, NULL, cleanup_mutex, apr_pool_cleanup_null);
 
     return OK;
 }
@@ -475,20 +503,26 @@ static void initialize_child(apr_pool_t *p, server_rec *s)
         return;
     }
 
-    status = apr_global_mutex_child_init(&lock, lock_name, p);
+    if(!lock) {
+        DEBUGLOG("global mutex is null in initialize_child");
+        return;
+    }
+
+    const char *lock_filename = apr_global_mutex_lockfile(lock);
+    status = apr_global_mutex_child_init(&lock, lock_filename, p);
     if (status != APR_SUCCESS) {
-        log_and_cleanup("failed to create lock (lock)", status, s);
+        ap_log_error(APLOG_MARK, APLOG_ERR, status, s, "apr_global_mutex_child_init failed");
         return;
     }
 }
 
 static void register_hooks(apr_pool_t *p)
 {
-    tmpnam(shm_name);
-    shmname    = shm_name;
+    // read_request should be called after mod_setenvif's one
+    ap_hook_post_read_request(dosdetector_read_request,NULL,NULL,APR_HOOK_LAST);
 
-    ap_hook_post_read_request(dosdetector_handler,NULL,NULL,APR_HOOK_MIDDLE);
-    ap_hook_post_config(initialize_module, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_pre_config(dosdetector_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_post_config(dosdetector_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(initialize_child, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
