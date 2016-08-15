@@ -27,6 +27,8 @@
 
 #include <arpa/inet.h>
 #include <time.h>
+#include <sys/file.h>
+#include <unistd.h>
 #include "httpd.h"
 #include "http_config.h"
 #include "http_request.h"
@@ -84,6 +86,7 @@ typedef struct {
     signed int ban_period;
     apr_array_header_t *ignore_contenttype;
     apr_array_header_t *contenttype_regexp;
+    apr_array_header_t *blacklist;
 } dosdetector_dir_config;
 
 typedef enum {
@@ -102,6 +105,26 @@ static const char *mutex_id = "dosdetector-shm";
 static apr_global_mutex_t *lock = NULL;
 static apr_shm_t *shm = NULL;
 
+void write_black_list(const char *filename, const char* address)
+{
+    FILE *fp;
+
+    if ((fp = fopen(filename, "a")) == NULL) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, "Notice: can't open black list file.");
+        return;
+    }
+
+    if (flock(fileno(fp), LOCK_EX) != 0) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, "Notice: unable to lock open black list file.");
+        fclose(fp);
+        return;
+    }
+
+    lseek(fileno(fp), 0, SEEK_SET);
+    fprintf(fp, "%s\n", address);
+    flock(fileno(fp), LOCK_UN);
+    fclose(fp);
+}
 
 static apr_status_t cleanup_shm(void *not_used)
 {
@@ -216,6 +239,7 @@ static void *dosdetector_create_dir_config(apr_pool_t *p, char *path)
     cfg->ban_period    = DEFAULT_BAN_PERIOD;
     cfg->ignore_contenttype = apr_array_make(p, 0, sizeof(char *));
     cfg->contenttype_regexp = apr_array_make(p, 0, sizeof(char *));
+    cfg->blacklist = apr_array_make(p, 0, sizeof(char *));
 
     return (void *) cfg;
 }
@@ -329,6 +353,10 @@ static int dosdetector_read_request(request_rec *r)
         ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
                 "'%s' is suspected as DoS attack! (counter: %d)", address, client->count);
         apr_table_setn(r->subprocess_env, "SuspectDoS", "1");
+        if (cfg->blacklist->nelts > 0) {
+            char *filename = ((char **) cfg->blacklist->elts)[0];
+            write_black_list(filename, address);
+        }
         break;
 
     case SUSPECTED_HARD_FIRST:
@@ -426,6 +454,13 @@ static const char *set_ignore_contenttype_config(cmd_parms *parms, void *mconfig
     return NULL;
 }
 
+static const char *set_blacklist_config(cmd_parms *parms, void *mconfig, const char *arg)
+{
+    dosdetector_dir_config *cfg = (dosdetector_dir_config *) mconfig;
+    *(char **) apr_array_push(cfg->blacklist) = apr_pstrdup(parms->pool, arg);
+    return OK;
+}
+
 static command_rec dosdetector_cmds[] = {
     AP_INIT_TAKE1("DoSDetection", set_detection_config, NULL, OR_FILEINFO,
      "Enable to detect DoS Attack or not"),
@@ -443,6 +478,8 @@ static command_rec dosdetector_cmds[] = {
      "The size of table for tracking clients"),
     AP_INIT_ITERATE("DoSIgnoreContentType", set_ignore_contenttype_config, NULL, OR_FILEINFO,
      "The names of ignoring Content Type"),
+    AP_INIT_ITERATE("DoSBlacklist", set_blacklist_config, NULL, OR_FILEINFO,
+     "Blacklist file"),
     {NULL},
 };
 
